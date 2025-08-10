@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"time"
 
+	"task/internal/cache"
 	"task/internal/config"
 	"task/internal/handler"
 	"task/internal/repository"
@@ -11,6 +12,7 @@ import (
 	"task/internal/service"
 	"task/pkg/logger"
 
+	"github.com/redis/go-redis/v9"
 	"go.uber.org/zap"
 )
 
@@ -33,8 +35,27 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	taskRepo := repository.NewTaskRepository(db)
 
+	// Cache wiring
+	var store cache.Store
+	var local *cache.LocalStore
+	if cfg.Cache.LocalCap > 0 {
+		local = cache.NewLocalStore(cfg.Cache.LocalCap, cfg.Cache.TTL)
+		store = local
+	}
+	if cfg.Redis.Addr != "" {
+		rc := redis.NewClient(&redis.Options{Addr: cfg.Redis.Addr, Password: cfg.Redis.Password, DB: cfg.Redis.DB})
+		redisStore := cache.NewRedisStore(rc, cfg.Cache.JitterSec)
+		// wrap: prefer Redis, fallback local
+		store = &cache.MultiStore{Primary: redisStore, Secondary: local}
+	}
+
+	var taskSvc *service.TaskService
+	if store != nil {
+		taskSvc = service.NewTaskServiceWithCache(taskRepo, store, int64(cfg.Cache.TTL.Seconds()), int64(cfg.Cache.NullTTL.Seconds()))
+	} else {
+		taskSvc = service.NewTaskService(taskRepo)
+	}
 	authSvc := service.NewAuthService(userRepo, cfg.JWT.Secret, cfg.JWT.AccessTokenTTL)
-	taskSvc := service.NewTaskService(taskRepo)
 
 	authHandler := handler.NewAuthHandler(authSvc)
 	taskHandler := handler.NewTaskHandler(taskSvc)

@@ -4,10 +4,13 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"task/internal/middleware"
 	"task/internal/service"
+	"task/pkg/logger"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 type TaskHandler struct {
@@ -52,8 +55,9 @@ func (h *TaskHandler) Get(c *gin.Context) {
 		return
 	}
 	id := uid[:]
-	t, err := h.tasks.Get(c.Request.Context(), id)
+	t, src, err := h.tasks.Get(c.Request.Context(), id)
 	if err != nil {
+		logger.L().Info("get task miss", zap.String("trace_id", middleware.TraceIDFromContext(c)), zap.String("method", c.Request.Method), zap.String("path", c.FullPath()), zap.String("task_id", idStr))
 		c.JSON(http.StatusNotFound, gin.H{"error": "task not found"})
 		return
 	}
@@ -65,8 +69,9 @@ func (h *TaskHandler) Get(c *gin.Context) {
 	if len(t.Result) > 0 {
 		_ = json.Unmarshal(t.Result, &result)
 	}
+	logger.L().Info("get task success", zap.String("trace_id", middleware.TraceIDFromContext(c)), zap.String("method", c.Request.Method), zap.String("path", c.FullPath()), zap.String("task_id", idStr), zap.String("status", t.Status), zap.String("source", src))
 	c.JSON(http.StatusOK, gin.H{
-		"task_id":    t.UUIDString(),
+		"task_id":    idStr,
 		"status":     t.Status,
 		"result":     result,
 		"created_at": t.CreatedAt,
