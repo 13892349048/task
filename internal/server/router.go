@@ -25,8 +25,9 @@ func NewRouter(deps RouterDeps) *gin.Engine {
 		c.Header("X-Frame-Options", "DENY")
 		c.Next()
 	})
-	// Order matters: request id -> logging -> others
+	// Order matters: request id -> http metrics -> logging -> others
 	r.Use(middleware.RequestID())
+	r.Use(middleware.HTTPMetrics())
 	r.Use(middleware.RequestLogger())
 
 	r.GET("/api/v1/health", deps.Health.Health)

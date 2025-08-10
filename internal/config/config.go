@@ -1,12 +1,15 @@
 package config
 
 import (
+	"errors"
+	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
 )
 
-// Config holds application configuration loaded from environment variables.
+// Config holds application configuration loaded from YAML/env.
 type Config struct {
 	Environment string
 	HTTPPort    string
@@ -39,43 +42,67 @@ type Config struct {
 
 func Load() (*Config, error) {
 	v := viper.New()
-	v.AutomaticEnv()
+
+	// Defaults (dot-keys to align with YAML structure)
+	v.SetDefault("environment", "dev")
+	v.SetDefault("http.port", "8080")
+
+	v.SetDefault("mysql.max_open_conns", 50)
+	v.SetDefault("mysql.max_idle_conns", 25)
+	v.SetDefault("mysql.conn_max_lifetime", "30m")
+
+	v.SetDefault("jwt.access_token_ttl", "1h")
+
+	v.SetDefault("redis.db", 0)
+
+	v.SetDefault("cache.ttl", "300s")
+	v.SetDefault("cache.null_ttl", "30s")
+	v.SetDefault("cache.local_cap", 1000)
+	v.SetDefault("cache.jitter_sec", 60)
+
+	// YAML config file
+	v.SetConfigType("yaml")
+	if path := os.Getenv("TASK_CONFIG"); path != "" {
+		v.SetConfigFile(path)
+	} else {
+		v.SetConfigName("config")
+		v.AddConfigPath(".")
+		v.AddConfigPath("./config")
+		v.AddConfigPath("/etc/task")
+	}
+	if err := v.ReadInConfig(); err != nil {
+		var nf viper.ConfigFileNotFoundError
+		if !errors.As(err, &nf) {
+			return nil, err
+		}
+		// if not found, continue with defaults + env
+	}
+
+	// Env overrides (TASK_HTTP_PORT overrides http.port, etc.)
 	v.SetEnvPrefix("TASK")
-
-	// Defaults
-	v.SetDefault("ENVIRONMENT", "dev")
-	v.SetDefault("HTTP_PORT", "8080")
-	v.SetDefault("MYSQL_MAX_OPEN_CONNS", 50)
-	v.SetDefault("MYSQL_MAX_IDLE_CONNS", 25)
-	v.SetDefault("MYSQL_CONN_MAX_LIFETIME", "30m")
-	v.SetDefault("JWT_ACCESS_TOKEN_TTL", "1h")
-
-	v.SetDefault("REDIS_DB", 0)
-	v.SetDefault("CACHE_TTL", "300s")
-	v.SetDefault("CACHE_NULL_TTL", "30s")
-	v.SetDefault("CACHE_LOCAL_CAP", 1000)
-	v.SetDefault("CACHE_JITTER_SEC", 60)
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	v.AutomaticEnv()
 
 	cfg := &Config{}
-	cfg.Environment = v.GetString("ENVIRONMENT")
-	cfg.HTTPPort = v.GetString("HTTP_PORT")
+	cfg.Environment = v.GetString("environment")
+	cfg.HTTPPort = v.GetString("http.port")
 
-	cfg.MySQL.DSN = v.GetString("MYSQL_DSN")
-	cfg.MySQL.MaxOpenConns = v.GetInt("MYSQL_MAX_OPEN_CONNS")
-	cfg.MySQL.MaxIdleConns = v.GetInt("MYSQL_MAX_IDLE_CONNS")
-	cfg.MySQL.ConnMaxLifetime = v.GetDuration("MYSQL_CONN_MAX_LIFETIME")
+	cfg.MySQL.DSN = v.GetString("mysql.dsn")
+	cfg.MySQL.MaxOpenConns = v.GetInt("mysql.max_open_conns")
+	cfg.MySQL.MaxIdleConns = v.GetInt("mysql.max_idle_conns")
+	cfg.MySQL.ConnMaxLifetime = v.GetDuration("mysql.conn_max_lifetime")
 
-	cfg.JWT.Secret = v.GetString("JWT_SECRET")
-	cfg.JWT.AccessTokenTTL = v.GetDuration("JWT_ACCESS_TOKEN_TTL")
+	cfg.JWT.Secret = v.GetString("jwt.secret")
+	cfg.JWT.AccessTokenTTL = v.GetDuration("jwt.access_token_ttl")
 
-	cfg.Redis.Addr = v.GetString("REDIS_ADDR")
-	cfg.Redis.Password = v.GetString("REDIS_PASSWORD")
-	cfg.Redis.DB = v.GetInt("REDIS_DB")
+	cfg.Redis.Addr = v.GetString("redis.addr")
+	cfg.Redis.Password = v.GetString("redis.password")
+	cfg.Redis.DB = v.GetInt("redis.db")
 
-	cfg.Cache.TTL = v.GetDuration("CACHE_TTL")
-	cfg.Cache.NullTTL = v.GetDuration("CACHE_NULL_TTL")
-	cfg.Cache.LocalCap = v.GetInt("CACHE_LOCAL_CAP")
-	cfg.Cache.JitterSec = v.GetInt("CACHE_JITTER_SEC")
+	cfg.Cache.TTL = v.GetDuration("cache.ttl")
+	cfg.Cache.NullTTL = v.GetDuration("cache.null_ttl")
+	cfg.Cache.LocalCap = v.GetInt("cache.local_cap")
+	cfg.Cache.JitterSec = v.GetInt("cache.jitter_sec")
 
 	return cfg, nil
 }

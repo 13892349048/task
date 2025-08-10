@@ -63,13 +63,12 @@ func (s *TaskService) Get(ctx context.Context, id []byte) (*model.Task, string, 
 	key := "task:" + uid.String()
 
 	if s.cache != nil {
-		if tv, ok, err := s.cache.GetTaskView(key); err == nil && ok {
+		if tv, ok, src, err := s.cache.GetTaskView(key); err == nil && ok {
 			if tv.NotFound {
-				return nil, "redis", fmt.Errorf("not found")
+				return nil, src, fmt.Errorf("not found")
 			}
-			// build model.Task from cached view
 			mt := &model.Task{ID: id, Status: tv.Status, Result: tv.Result, CreatedAt: tv.CreatedAt, UpdatedAt: tv.UpdatedAt}
-			return mt, "redis", nil
+			return mt, src, nil
 		} else if err != nil {
 			logger.L().Warn("cache get error", zap.String("key", key), zap.Error(err))
 		}
@@ -78,7 +77,6 @@ func (s *TaskService) Get(ctx context.Context, id []byte) (*model.Task, string, 
 	// DB fallback
 	t, err := s.tasks.GetByID(ctx, id)
 	if err != nil {
-		// cache null sentinel
 		if s.cache != nil {
 			_ = s.cache.SetNull(key, seconds(s.cfg.nullTTL))
 		}
@@ -89,7 +87,6 @@ func (s *TaskService) Get(ctx context.Context, id []byte) (*model.Task, string, 
 	if s.cache != nil {
 		var resultCopy []byte
 		if len(t.Result) > 0 {
-			// ensure valid JSON or leave as is
 			if json.Valid(t.Result) {
 				resultCopy = append([]byte(nil), t.Result...)
 			}

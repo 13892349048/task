@@ -35,7 +35,7 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	taskRepo := repository.NewTaskRepository(db)
 
-	// Cache wiring
+	// Cache wiring: prefer local first, then redis
 	var store cache.Store
 	var local *cache.LocalStore
 	if cfg.Cache.LocalCap > 0 {
@@ -45,7 +45,6 @@ func main() {
 	if cfg.Redis.Addr != "" {
 		rc := redis.NewClient(&redis.Options{Addr: cfg.Redis.Addr, Password: cfg.Redis.Password, DB: cfg.Redis.DB})
 		redisStore := cache.NewRedisStore(rc, cfg.Cache.JitterSec)
-		// wrap: prefer Redis, fallback local
 		store = &cache.MultiStore{Primary: redisStore, Secondary: local}
 	}
 

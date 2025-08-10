@@ -3,6 +3,8 @@ package cache
 import (
 	"time"
 
+	"task/internal/metrics"
+
 	"github.com/hashicorp/golang-lru/v2/expirable"
 )
 
@@ -14,9 +16,14 @@ func NewLocalStore(capacity int, defaultTTL time.Duration) *LocalStore {
 	return &LocalStore{lru: expirable.NewLRU[string, *TaskView](capacity, nil, defaultTTL)}
 }
 
-func (s *LocalStore) GetTaskView(key string) (*TaskView, bool, error) {
+func (s *LocalStore) GetTaskView(key string) (*TaskView, bool, string, error) {
 	v, ok := s.lru.Get(key)
-	return v, ok, nil
+	if ok {
+		metrics.CacheGetTotal.WithLabelValues("local", "hit").Inc()
+		return v, true, "local", nil
+	}
+	metrics.CacheGetTotal.WithLabelValues("local", "miss").Inc()
+	return nil, false, "local", nil
 }
 
 func (s *LocalStore) SetTaskView(key string, view *TaskView, ttl time.Duration) error {

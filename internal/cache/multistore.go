@@ -7,16 +7,16 @@ type MultiStore struct {
 	Secondary Store // optional
 }
 
-func (m *MultiStore) GetTaskView(key string) (*TaskView, bool, error) {
-	if m.Primary != nil {
-		if v, ok, err := m.Primary.GetTaskView(key); err == nil && ok {
-			return v, ok, nil
+func (m *MultiStore) GetTaskView(key string) (*TaskView, bool, string, error) {
+	if m.Secondary != nil {
+		if v, ok, src, err := m.Secondary.GetTaskView(key); err == nil && ok {
+			return v, ok, src, nil
 		}
 	}
-	if m.Secondary != nil {
-		return m.Secondary.GetTaskView(key)
+	if m.Primary != nil {
+		return m.Primary.GetTaskView(key)
 	}
-	return nil, false, nil
+	return nil, false, "", nil
 }
 
 func (m *MultiStore) SetTaskView(key string, view *TaskView, ttl time.Duration) error {

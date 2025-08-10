@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"task/internal/metrics"
 	"task/internal/middleware"
 	"task/internal/service"
 	"task/pkg/logger"
@@ -30,20 +31,24 @@ type createTaskRequest struct {
 func (h *TaskHandler) Create(c *gin.Context) {
 	var req createTaskRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		metrics.TaskCreateTotal.WithLabelValues("error").Inc()
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	userIDVal, exists := c.Get("user_id")
 	if !exists {
+		metrics.TaskCreateTotal.WithLabelValues("error").Inc()
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 		return
 	}
 	userID := userIDVal.(uint64)
 	idStr, err := h.tasks.Create(c.Request.Context(), userID, req.Title, req.Payload, req.Priority)
 	if err != nil {
+		metrics.TaskCreateTotal.WithLabelValues("error").Inc()
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+	metrics.TaskCreateTotal.WithLabelValues("ok").Inc()
 	c.JSON(http.StatusAccepted, gin.H{"task_id": idStr, "status": "queued"})
 }
 
@@ -57,6 +62,7 @@ func (h *TaskHandler) Get(c *gin.Context) {
 	id := uid[:]
 	t, src, err := h.tasks.Get(c.Request.Context(), id)
 	if err != nil {
+		metrics.TaskGetTotal.WithLabelValues(src, "miss").Inc()
 		logger.L().Info("get task miss", zap.String("trace_id", middleware.TraceIDFromContext(c)), zap.String("method", c.Request.Method), zap.String("path", c.FullPath()), zap.String("task_id", idStr))
 		c.JSON(http.StatusNotFound, gin.H{"error": "task not found"})
 		return
@@ -69,6 +75,7 @@ func (h *TaskHandler) Get(c *gin.Context) {
 	if len(t.Result) > 0 {
 		_ = json.Unmarshal(t.Result, &result)
 	}
+	metrics.TaskGetTotal.WithLabelValues(src, "hit").Inc()
 	logger.L().Info("get task success", zap.String("trace_id", middleware.TraceIDFromContext(c)), zap.String("method", c.Request.Method), zap.String("path", c.FullPath()), zap.String("task_id", idStr), zap.String("status", t.Status), zap.String("source", src))
 	c.JSON(http.StatusOK, gin.H{
 		"task_id":    idStr,

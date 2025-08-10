@@ -6,6 +6,8 @@ import (
 	"math/rand"
 	"time"
 
+	"task/internal/metrics"
+
 	"github.com/redis/go-redis/v9"
 )
 
@@ -18,21 +20,25 @@ func NewRedisStore(cli *redis.Client, jitterSec int) *RedisStore {
 	return &RedisStore{cli: cli, jitterSec: jitterSec}
 }
 
-func (s *RedisStore) GetTaskView(key string) (*TaskView, bool, error) {
+func (s *RedisStore) GetTaskView(key string) (*TaskView, bool, string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
 	b, err := s.cli.Get(ctx, key).Bytes()
 	if err == redis.Nil {
-		return nil, false, nil
+		metrics.CacheGetTotal.WithLabelValues("redis", "miss").Inc()
+		return nil, false, "redis", nil
 	}
 	if err != nil {
-		return nil, false, err
+		metrics.CacheGetTotal.WithLabelValues("redis", "error").Inc()
+		return nil, false, "redis", err
 	}
 	var tv TaskView
 	if err := json.Unmarshal(b, &tv); err != nil {
-		return nil, false, err
+		metrics.CacheGetTotal.WithLabelValues("redis", "error").Inc()
+		return nil, false, "redis", err
 	}
-	return &tv, true, nil
+	metrics.CacheGetTotal.WithLabelValues("redis", "hit").Inc()
+	return &tv, true, "redis", nil
 }
 
 func (s *RedisStore) SetTaskView(key string, view *TaskView, ttl time.Duration) error {

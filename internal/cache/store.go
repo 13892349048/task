@@ -16,7 +16,7 @@ type TaskView struct {
 
 // Store abstracts multi-level cache operations.
 type Store interface {
-	GetTaskView(key string) (*TaskView, bool, error)
+	GetTaskView(key string) (*TaskView, bool, string, error) // source: local|redis
 	SetTaskView(key string, view *TaskView, ttl time.Duration) error
 	SetNull(key string, ttl time.Duration) error
 	Delete(key string) error
